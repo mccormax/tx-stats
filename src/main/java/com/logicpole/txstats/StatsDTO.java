@@ -1,11 +1,13 @@
 package com.logicpole.txstats;
 
 /**
- * Data transfer object for Transaction statistics
+ * Data transfer object for statistics of a set of timestamped double values
  *
  * @author Max McCormick
  */
 public final class StatsDTO {
+
+   private static final long serialVersionUID = 1497016756L;
 
    private final double sum;
    private final double avg;
