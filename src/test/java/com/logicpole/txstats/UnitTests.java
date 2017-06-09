@@ -24,26 +24,38 @@ public class UnitTests {
    }
 
    @Test
-	public void checkForCorrectStatsAfterAddingTenEqualTransactions() {
+	public void checkForCorrectStatsAfterAddingTenEqualTransactions()
+           throws Exception {
 
 		// create some simple transaction values
-		long now = System.currentTimeMillis();
-		BigDecimal amount = new BigDecimal(10.10);
+      int count = 10000;
 
-		// add these 10x
-		for (int i=0; i<10; i++)
-			 txStats.addTransaction(amount, now);
+		// add count transactions
+      double total = 0;
+		for (int i=0; i<count; i++) {
+         long now = System.currentTimeMillis();
+         String amt = String.format("%02d.%02d", i+1, i%100);
+         BigDecimal amount = new BigDecimal(amt);
+         total += amount.doubleValue();
+
+         txStats.addTransaction(amount, now);
+      }
+      double sum = total;
+
+		double avg = sum / count;
+		double min = 1.00;
+		double max = (double) count + ( ( count - 1 ) % 100 ) / 100.0;
 
 		// read back the stats
 		StatsDTO stats = txStats.current();
 
 		// check that the stats are correct
       // note:  there should be no effect of the 60 sec time window
-		assertThat(stats.getAvg()).isEqualTo(10.1);
-		assertThat(stats.getSum()).isEqualTo(101.0);
-      assertThat(stats.getMax()).isEqualTo(10.1);
-      assertThat(stats.getMin()).isEqualTo(10.1);
-      assertThat(stats.getCount()).isEqualTo(10);
+		assertThat(stats.getAvg()).isEqualTo(avg);
+		assertThat(stats.getSum()).isEqualTo(sum);
+      assertThat(stats.getMax()).isEqualTo(max);
+      assertThat(stats.getMin()).isEqualTo(min);
+      assertThat(stats.getCount()).isEqualTo(count);
 	}
 
 }
