@@ -1,0 +1,36 @@
+********************************************************************************
+*****                                                                      *****
+*****       Simple Spring Boot Application for Transaction Statistics      *****
+*****                                                                      *****
+********************************************************************************
+
+This is a simple REST API application to handle transaction statistics.
+
+There is no configuration as it uses the Spring Boot defaults.
+
+The REST API endpoint is at http://localhost:8080 and handles two resources:
+
+1. POST /transactions
+2. GET /statistics
+
+To build and run you must have Java 8 installed
+-----------------------------------------------
+
+Build and run tests
+-------------------
+
+./mvnw clean package
+
+Start service using the maven wrapper
+-------------------------------------
+
+./mvnw spring-boot:run
+
+Execute the jar file directly
+-----------------------------
+
+java -jar target/tx-stats-0.0.1-SNAPSHOT.jar
+
+
+
+

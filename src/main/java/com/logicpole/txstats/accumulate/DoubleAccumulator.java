@@ -1,4 +1,6 @@
-package com.logicpole.txstats;
+package com.logicpole.txstats.accumulate;
+
+import com.logicpole.txstats.dto.StatisticsDTO;
 
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -21,13 +23,14 @@ public class DoubleAccumulator {
    /*
     * Implementation Notes:
     *
-    * A value is assigned to a "slice" based on its timestamp.
-    * There are a number of slices covering a time span of 60 seconds.
-    * For simplicity there are 60 slices of one second duration.
-    *
-    * The data is stored in primitive arrays for performance reasons.
-    * These function somewhat like circular buffers, indexed by the current
-    * second of minute.
+    * Data is maintained in fixed-size arrays of primitives (for performance
+    * reasons).  Each array index is associated with a "slice" of data.
+    * For simplicity there are 60 slices, each of which is associated with one
+    * second of data.  Data is assigned to a slice based on its timestamp,
+    * specifically the second of minute.  For example, a data item with
+    * a timestamp of 12:16:57.897 UTC would be assigned the slice 57.  The
+    * minute of the timestamp is stored and used to determine the relevance of
+    * the data, ie. whether it occurred within the last minute.
     */
 
    /*
@@ -55,34 +58,44 @@ public class DoubleAccumulator {
     */
    private double[] sliceMin;
 
+   /*
+    *  Lock object to maintain thread safety
+    */
+   private final Object lock;
+
    /**
     * Construct an empty DoubleAccumulator which accumulates double data
     * values over a moving window of 60 seconds from the current instant
     * and back.
     */
-   DoubleAccumulator() {
+   public DoubleAccumulator() {
+
       // initialize fixed arrays in which to accumulate data
       sliceMinute = new int[NUM_SLICES];
       sliceCount = new int[NUM_SLICES];
       sliceSum = new double[NUM_SLICES];
       sliceMax = new double[NUM_SLICES];
       sliceMin = new double[NUM_SLICES];
+
+      lock = new Object();
    }
 
    /**
     * Accumulate a double value with the given timestamp.  Values with a
     * timestamp older than 60 seconds will be discarded.
     *
+    * This function executes in approximately constant time and memory (O(1)).
+    *
     * @param timestamp the unix epochtime (msec) associated with the data value.
     * @param value     the value to accumulate.
     * @return <tt>true</tt> if the data was accumulated, false if the timestamp
     * fell outside the current time window.
     */
-   boolean accumulate(long timestamp, double value) {
+   public boolean accumulate(long timestamp, double value) {
 
       // check whether timestamp is older than a minute and discard if outside
       // the window of interest.  note:  also discarding values from the future.
-      // though this scenario is possible due to clock drift we will not deal
+      // Although this scenario is possible due to clock drift we will not deal
       // with it here.
       long now = System.currentTimeMillis();
       if (timestamp <= now - MSEC_IN_MINUTE || timestamp > now)
@@ -92,9 +105,7 @@ public class DoubleAccumulator {
       // arrays containing the stored values
       Slice slice = getSlice(timestamp);
 
-      System.out.println("amount=" + value + ", minute=" + slice.minute + ", slice=" + slice.second);
-
-      synchronized (sliceSum) {
+      synchronized (lock) {
          // clear the accrued amount if the slice minute is less than the
          // current one.  note:  we could also skip slices which don't yet
          // have a minute value, however over time this will become irrelevant
@@ -112,16 +123,18 @@ public class DoubleAccumulator {
     * Get the statistics corresponding to the data values accumulated over the
     * last 60 seconds.
     *
+    * This function executes in approximately constant time and memory (O(1)).
+    *
     * @return the statistics.
     */
-   StatsDTO statistics() {
-      long now = System.currentTimeMillis();
+   public StatisticsDTO statistics() {
 
       // get the slice for right now
+      long now = System.currentTimeMillis();
       Slice slice = getSlice(now);
 
-      synchronized (sliceSum) {
-         // dynamically generate stats covering the last minute
+      // dynamically generate stats covering the last minute
+      synchronized (lock) {
          return generateStats(slice);
       }
    }
@@ -171,7 +184,7 @@ public class DoubleAccumulator {
    /**
     * Generate statistics based on the instant represented by the slice.
     */
-   private StatsDTO generateStats(Slice slice) {
+   private StatisticsDTO generateStats(Slice slice) {
       int count = 0;
       double min = 0;
       double max = 0;
@@ -185,8 +198,8 @@ public class DoubleAccumulator {
          // rollover is handled.
          // 0  .... 31 32 33 34 35 ..... 59 - second
          // 15 .... 15 15 15 14 14 ..... 14 - minute
-         //              |
-         //             now
+         //                |
+         //               now
          if (i == slice.second + 1) {
             slice.minute -= 1;
             if (slice.minute < 0)
@@ -215,7 +228,7 @@ public class DoubleAccumulator {
       if (count > 0)
          avg = sum / count;
 
-      return new StatsDTO(sum, avg, max, min, count);
+      return new StatisticsDTO(sum, avg, max, min, count);
    }
 
    /**
