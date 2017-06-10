@@ -5,6 +5,10 @@ import com.logicpole.txstats.dto.StatisticsDTO;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.util.Arrays;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Double accumulator
@@ -77,13 +81,20 @@ public class DoubleAccumulator {
       sliceMax = new double[NUM_SLICES];
       sliceMin = new double[NUM_SLICES];
 
+      // fill minute array with -1 since 0 has meaning
+      Arrays.fill(sliceMinute, -1);
+
+      // create an object to lock on for access to above arrays
       lock = new Object();
+
+      // start background thread to expunge arrays periodically
+      startExpunger();
    }
 
    /**
     * Accumulate a double value with the given timestamp.  Values with a
     * timestamp older than 60 seconds will be discarded.
-    *
+    * <p>
     * This function executes in approximately constant time and memory (O(1)).
     *
     * @param timestamp the unix epochtime (msec) associated with the data value.
@@ -106,12 +117,10 @@ public class DoubleAccumulator {
       Slice slice = getSlice(timestamp);
 
       synchronized (lock) {
-         // clear the accrued amount if the slice minute is less than the
-         // current one.  note:  we could also skip slices which don't yet
-         // have a minute value, however over time this will become irrelevant
-         // as the array becomes filled in
-         if (sliceMinute[slice.second] < slice.minute)
-            clearSlice(slice);
+         // clear the accrued amount if the slice minute is different to the
+         // current one and also not already cleared.
+         if (sliceMinute[slice.second] != slice.minute && sliceMinute[slice.second] != -1)
+            clearSlice(slice.second);
 
          // add the current value to the slice
          addToSlice(slice, value);
@@ -122,7 +131,7 @@ public class DoubleAccumulator {
    /**
     * Get the statistics corresponding to the data values accumulated over the
     * last 60 seconds.
-    *
+    * <p>
     * This function executes in approximately constant time and memory (O(1)).
     *
     * @return the statistics.
@@ -167,18 +176,18 @@ public class DoubleAccumulator {
       if (value > sliceMax[slice.second])
          sliceMax[slice.second] = value;
       // also set to the current minute
-      // note:  this could be conditional on count==0
       sliceMinute[slice.second] = slice.minute;
    }
 
    /**
     * Clear data in the given slice
     */
-   private void clearSlice(Slice slice) {
-      sliceSum[slice.second] = 0;
-      sliceCount[slice.second] = 0;
-      sliceMin[slice.second] = 0;
-      sliceMax[slice.second] = 0;
+   private void clearSlice(int second) {
+      sliceSum[second] = 0;
+      sliceCount[second] = 0;
+      sliceMin[second] = 0;
+      sliceMax[second] = 0;
+      sliceMinute[second] = -1;
    }
 
    /**
@@ -209,12 +218,6 @@ public class DoubleAccumulator {
          if (sliceCount[i] == 0)
             continue;
 
-         // if the minute doesn't match then clear it out.  this will ensure
-         // that old data from N hours ago doesn't get into the stats
-         if (sliceMinute[i] != slice.minute) {
-            clearSlice(slice);
-            continue;
-         }
          // if so, update sum, count, max and min values
          sum += sliceSum[i];
          count += sliceCount[i];
@@ -230,6 +233,55 @@ public class DoubleAccumulator {
 
       return new StatisticsDTO(sum, avg, max, min, count);
    }
+
+   /**
+    * Expunge data not within the current time window
+    * <p>
+    * Note:  this method should be called twice per hour to be effective.
+    */
+   private void expungeSlices(Slice slice) {
+      // iterate through all the slices
+      for (int i = 0; i < NUM_SLICES; i++) {
+
+         if (sliceMinute[i] == -1)
+            continue;  // nothing to do
+
+         // if the minute lies outside the current range of the current minute
+         // and the previous minute then clear it out.
+         if (slice.minute > 0) {
+            // usual case
+            if (sliceMinute[i] > slice.minute || sliceMinute[i] < slice.minute - 1) {
+               clearSlice(i);
+            }
+         } else if (slice.minute == 0) {
+            // special case of hour rollover
+            if (sliceMinute[i] > 0 && sliceMinute[i] < 59) {
+               clearSlice(i);
+            }
+         } // slice.minute can be -1 if 'empty'
+      }
+   }
+
+   /**
+    * Expunge old data periodically since slices are effectively aliased at
+    * multiples of the hour.
+    */
+   private void startExpunger() {
+      ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+      scheduler.scheduleAtFixedRate(
+              () -> {
+                 try {
+                    Slice slice = getSlice(System.currentTimeMillis());
+                    synchronized (lock) {
+                       expungeSlices(slice);
+                    }
+                 } catch (Throwable t) {
+                    // catch an keep going.
+                    t.printStackTrace();
+                 }
+              }, 0, 30, TimeUnit.MINUTES);
+   }
+
 
    /**
     * Simple data structure to contain the minute and second coordinates of a

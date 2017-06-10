@@ -2,6 +2,7 @@ package com.logicpole.txstats.resource;
 
 import com.logicpole.txstats.accumulate.DoubleAccumulator;
 import com.logicpole.txstats.dto.StatisticsDTO;
+import com.logicpole.txstats.dto.TransactionDTO;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -52,25 +53,25 @@ public class RestResource {
     * time  is a long specifying unix epoch time format in milliseconds
     *
     * @param response the http response object
-    * @param payload  the http request payload, in map form
+    * @param transaction the http request payload, mapped into the correct dto.
     */
    @RequestMapping(method = RequestMethod.POST, value = "/transactions")
-   public void addTransaction(HttpServletResponse response, @RequestBody Map<String, String> payload) {
-      long timestamp = 0;
+   public void addTransaction(HttpServletResponse response, @RequestBody TransactionDTO transaction) {
+      /*long timestamp = 0;
       double amount = 0;
       try {
          timestamp = Long.parseLong(payload.get("timestamp"));
          amount = Double.parseDouble(payload.get("amount"));
       } catch (Throwable t) {
          // ignore
-      }
+      }*/
       // make sure we have some realistic values.  a transaction of a negative
       // or zero amount would not make sense.
-      if (timestamp == 0 || amount <= 0) {
+      if (transaction.getTimestamp() == 0 || transaction.getAmount() <= 0) {
          response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
          return;
       }
-      if (transactions.accumulate(timestamp, amount))
+      if (transactions.accumulate(transaction.getTimestamp(), transaction.getAmount()))
          response.setStatus(HttpServletResponse.SC_CREATED);
       else
          response.setStatus(HttpServletResponse.SC_NO_CONTENT);

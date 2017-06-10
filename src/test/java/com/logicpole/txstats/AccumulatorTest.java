@@ -69,6 +69,35 @@ public class AccumulatorTest {
    }
 
    /**
+    * Generate a short burst of transactions and check that average is
+    * calculated correctly.  This does not test for thread safety of the
+    * DoubleAccumulator, nor does it verify that data is discarded properly.
+    */
+   @Test
+   public void ensureCorrectMaxMinCountSingleThreaded()
+           throws Exception {
+
+      // accumulate a set of transactions
+      int count = 100;
+      for (int i = 0; i < count; i++) {
+
+         // generate some values
+         long now = System.currentTimeMillis();
+         double amount = i + 1 + ((i % 100) / 100.0);
+         transactions.accumulate(now, amount);
+      }
+      double min = 1.00;
+      double max = (double) count + ((count - 1) % 100) / 100.0;
+
+      // read back the stats
+      StatisticsDTO stats = transactions.statistics();
+
+      assertThat(stats.getMin()).isEqualTo(min);
+      assertThat(stats.getMax()).isEqualTo(max);
+      assertThat(stats.getCount()).isEqualTo(count);
+   }
+
+   /**
     * Add a transaction every 10 seconds for 2 minutes and verify that the
     * sum never exceeds the sum it had at 1 minute.  This tests that the
     * time windowing functionality works properly.

@@ -14,6 +14,10 @@ public final class TransactionDTO implements Serializable {
    private long timestamp;
    private double amount;
 
+   // for auto-creation using introspection
+   public TransactionDTO() {
+   }
+
    public TransactionDTO(long timestamp, double amount) {
       this.timestamp = timestamp;
       this.amount = amount;
