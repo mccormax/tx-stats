@@ -32,5 +32,6 @@ Execute the jar file directly
 java -jar target/tx-stats-0.0.1-SNAPSHOT.jar
 
 
-
+THE END
+-------
 
